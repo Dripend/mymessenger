@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Мессенджер</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Авторизация -->
+  <div id="auth-screen">
+    <h1>Мессенджер</h1>
+    <div class="auth-tabs">
+      <button class="auth-tab active" data-tab="login">Вход</button>
+      <button class="auth-tab" data-tab="register">Регистрация</button>
+    </div>
+    <form id="login-form" class="auth-form">
+      <input type="text" id="login-username" placeholder="Имя пользователя" maxlength="20" required>
+      <input type="password" id="login-password" placeholder="Пароль" required>
+      <div id="login-error" class="error-msg"></div>
+      <button type="submit">Войти</button>
+    </form>
+    <form id="register-form" class="auth-form hidden">
+      <input type="text" id="reg-username" placeholder="Придумайте имя (2-20 символов)" maxlength="20" required>
+      <input type="password" id="reg-password" placeholder="Пароль (минимум 4 символа)" required>
+      <input type="password" id="reg-password2" placeholder="Повторите пароль" required>
+      <div id="register-error" class="error-msg"></div>
+      <button type="submit">Создать аккаунт</button>
+    </form>
+  </div>
+
+  <!-- Чат -->
+  <div id="chat-screen" class="hidden">
+    <aside id="sidebar">
+      <header>
+        <h2>Чаты</h2>
+        <div class="sidebar-actions">
+          <span id="current-user"></span>
+          <button id="logout-btn" title="Выйти">⎋</button>
+          <button id="create-room-btn" title="Создать комнату">+</button>
+        </div>
+      </header>
+
+      <div class="sidebar-tabs">
+        <button class="sidebar-tab active" data-tab="rooms">💬 Комнаты</button>
+        <button class="sidebar-tab" data-tab="users">👤 Люди</button>
+      </div>
+
+      <div id="rooms-panel" class="sidebar-panel">
+        <div id="room-list"></div>
+      </div>
+      <div id="users-panel" class="sidebar-panel hidden">
+        <div id="user-list"></div>
+      </div>
+    </aside>
+
+    <main id="chat-area">
+      <header id="chat-header">
+        <h2 id="room-name">Выберите чат</h2>
+        <span id="room-type"></span>
+      </header>
+      <div id="messages"></div>
+      <div id="typing-indicator"></div>
+      <footer id="chat-footer">
+        <button id="emoji-btn" title="Эмодзи" disabled>😊</button>
+        <input type="text" id="message-input" placeholder="Напишите сообщение..." maxlength="500" disabled>
+        <button id="send-btn" disabled>➤</button>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Модалка создания комнаты -->
+  <div id="create-room-modal" class="modal hidden">
+    <div class="modal-content">
+      <h3>✨ Создать чат</h3>
+      <input type="text" id="new-room-name" placeholder="Название комнаты" maxlength="50">
+      <div class="radio-group">
+        <label><input type="radio" name="room-type" value="room" checked> 💬 Комната (все пишут)</label>
+        <label><input type="radio" name="room-type" value="channel"> 📢 Канал (только вы пишете)</label>
+      </div>
+      <div class="modal-buttons">
+        <button id="cancel-create">Отмена</button>
+        <button id="confirm-create">Создать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Панель эмодзи -->
+  <div id="emoji-picker" class="hidden">
+    <div class="emoji-categories">
+      <button class="emoji-cat active" data-cat="smileys">😀</button>
+      <button class="emoji-cat" data-cat="gestures">👋</button>
+      <button class="emoji-cat" data-cat="hearts">❤️</button>
+      <button class="emoji-cat" data-cat="animals">🐶</button>
+      <button class="emoji-cat" data-cat="food">🍕</button>
+      <button class="emoji-cat" data-cat="objects">⚽</button>
+    </div>
+    <div id="emoji-grid"></div>
+  </div>
+
+  <script src="/static/client.js"></script>
+</body>
+</html>
