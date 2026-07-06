@@ -457,3 +457,75 @@ function showNotification(text) {
 if (!loadAuth()) {
   authScreen.classList.remove('hidden');
 }
+
+// === Мобильное меню ===
+mobileMenuBtn.onclick = () => {
+  sidebar.classList.toggle('mobile-open');
+};
+
+// Закрывать sidebar при выборе комнаты/пользователя на мобильных
+function closeMobileMenu() {
+  if (window.innerWidth <= 768) {
+    sidebar.classList.remove('mobile-open');
+  }
+}
+
+// Переопределяем клики по комнатам и пользователям
+const originalAddRoomToList = addRoomToList;
+addRoomToList = function(room) {
+  if (document.querySelector(`.room-item[data-room-id="${room.id}"]`)) return;
+  const div = document.createElement('div');
+  div.className = 'room-item';
+  div.dataset.roomId = room.id;
+  const icon = room.type === 'channel' ? '📢' : '💬';
+  div.innerHTML = `
+    <div class="room-icon">${icon}</div>
+    <div class="room-info">
+      <div class="room-name">${escapeHtml(room.name)}</div>
+      <div class="room-type-badge">${room.type === 'channel' ? 'Канал' : 'Комната'}</div>
+    </div>
+  `;
+  div.onclick = () => {
+    ws.send(JSON.stringify({ type: 'join_room', room_id: room.id }));
+    closeMobileMenu(); // 🔥 Закрываем меню на мобильных
+  };
+  roomList.appendChild(div);
+};
+
+const originalAddUserToList = addUserToList;
+addUserToList = function(user) {
+  if (user.username === myName) return;
+  if (document.querySelector(`.user-item[data-username="${user.username}"]`)) return;
+  
+  const div = document.createElement('div');
+  div.className = 'user-item';
+  div.dataset.username = user.username;
+  const initial = user.username.charAt(0).toUpperCase();
+  const gradient = getAvatarGradient(user.username);
+  
+  div.innerHTML = `
+    <div class="user-avatar" style="background: ${gradient}">
+      ${initial}
+      <span class="status-dot ${user.is_online ? 'online' : 'offline'}"></span>
+    </div>
+    <div class="user-info">
+      <div class="user-name">@${escapeHtml(user.username)}</div>
+      <div class="user-status">${user.is_online ? '🟢 В сети' : '⚫ Не в сети'}</div>
+    </div>
+  `;
+  div.onclick = () => {
+    ws.send(JSON.stringify({ type: 'open_private', username: user.username }));
+    closeMobileMenu(); // 🔥 Закрываем меню на мобильных
+  };
+  userList.appendChild(div);
+};
+
+// Закрытие sidebar при клике вне его (на мобильных)
+document.addEventListener('click', (e) => {
+  if (window.innerWidth <= 768 &&
+      sidebar.classList.contains('mobile-open') &&
+      !sidebar.contains(e.target) &&
+      e.target !== mobileMenuBtn) {
+    sidebar.classList.remove('mobile-open');
+  }
+});
