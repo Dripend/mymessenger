@@ -122,6 +122,10 @@ def index():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
+    # 🔥 Сначала принимаем соединение
+    await ws.accept()
+    
+    # Затем проверяем токен
     username = decode_token(token)
     if not username:
         await ws.close(code=4001)
@@ -132,7 +136,6 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
             await ws.close(code=4001)
             return
     
-    await ws.accept()
     connected_users[ws] = username
     username_to_ws[username] = ws
     current_room_id: str | None = None
@@ -140,13 +143,12 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     logger.info(f"🔌 Подключён: {username}")
 
     try:
-        # 🔥 Извлекаем данные ВНУТРИ сессии
+        # Извлекаем данные ВНУТРИ сессии
         with get_session() as session:
             rooms = crud.get_all_rooms(session)
             users = crud.get_all_users(session)
             conversations = crud.get_conversations(session, username)
             
-            # Преобразуем в словари ДО закрытия сессии
             rooms_data = [{"id": r.id, "name": r.name, "type": r.type} for r in rooms]
             users_data = [
                 {
@@ -185,7 +187,6 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                             for m in history
                         ]
                         
-                        # 🔥 Извлекаем данные ВНУТРИ сессии
                         room_data = {
                             "id": room.id,
                             "name": room.name,
