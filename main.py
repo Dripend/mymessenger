@@ -130,7 +130,7 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     logger.info(f"🔌 Подключён: {username}")
 
     try:
-        # 🔥 ИСПРАВЛЕНИЕ: извлекаем данные ВНУТРИ сессии
+        # 🔥 Извлекаем данные ВНУТРИ сессии
         with get_session() as session:
             rooms = crud.get_all_rooms(session)
             users = crud.get_all_users(session)
