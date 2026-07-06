@@ -120,18 +120,10 @@ def index():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
-    # 🔥 Сначала принимаем соединение
-    
-    # Затем проверяем токен
     username = decode_token(token)
     if not username:
         await ws.close(code=4001)
         return
-    
-    with get_session() as session:
-        if not crud.get_user(session, username):
-            await ws.close(code=4001)
-            return
     
     connected_users[ws] = username
     username_to_ws[username] = ws
