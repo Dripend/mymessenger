@@ -1,13 +1,34 @@
+import os
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.sql import func
 from contextlib import contextmanager
+from dotenv import load_dotenv
 
-DATABASE_URL = "sqlite:///./messenger.db"
+load_dotenv()
 
-engine = create_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
+# Определяем URL базы данных
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if DATABASE_URL:
+    # Render даёт postgres://, SQLAlchemy требует postgresql://
+    if DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    
+    # Для Render: sslmode требуется
+    if "render.com" in DATABASE_URL and "?" not in DATABASE_URL:
+        DATABASE_URL += "?sslmode=require"
+    
+    engine = create_engine(DATABASE_URL, echo=False, pool_pre_ping=True)
+else:
+    # Локальная разработка — SQLite
+    engine = create_engine(
+        "sqlite:///./messenger.db",
+        echo=False,
+        connect_args={"check_same_thread": False}
+    )
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 Base = declarative_base()
 
 
