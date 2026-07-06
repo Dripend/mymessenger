@@ -1,5 +1,7 @@
 // === Элементы ===
 const authScreen = document.getElementById('auth-screen');
+const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+const sidebar = document.getElementById('sidebar');
 const chatScreen = document.getElementById('chat-screen');
 const loginForm = document.getElementById('login-form');
 const registerForm = document.getElementById('register-form');
