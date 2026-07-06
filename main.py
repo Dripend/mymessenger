@@ -66,12 +66,12 @@ username_to_ws: dict[str, WebSocket] = {}  # username -> ws (для ЛС)
 
 @app.on_event("startup")
 async def startup():
-    await init_db()
+    init_db()
     logger.info("✅ База данных инициализирована")
-    async for session in get_session():
-        room = await crud.get_room(session, "general")
+    with get_session() as session:
+        room = crud.get_room(session, "general")
         if not room:
-            await crud.create_room(session, "general", "Общий чат", "room", "system")
+            crud.create_room(session, "general", "Общий чат", "room", "system")
             logger.info("✅ Создана комната 'Общий чат'")
 
 
@@ -94,14 +94,23 @@ async def register(data: AuthRequest, session: AsyncSession = Depends(get_sessio
     return {"token": token, "username": username}
 
 
-@app.post("/api/login")
-async def login(data: AuthRequest, session: AsyncSession = Depends(get_session)):
+@app.post("/api/register")
+async def register(data: AuthRequest):
     username = data.username.strip()
-    user = await crud.get_user(session, username)
-    if not user or not verify_password(data.password, user.hashed_password):
-        raise HTTPException(401, "Неверное имя или пароль")
+    if len(username) < 2 or len(username) > 20:
+        raise HTTPException(400, "Имя должно быть от 2 до 20 символов")
+    if len(data.password) < 4:
+        raise HTTPException(400, "Пароль должен быть не короче 4 символов")
+    
+    with get_session() as session:
+        if crud.get_user(session, username):
+            raise HTTPException(409, "Пользователь уже существует")
+        
+        hashed = hash_password(data.password)
+        crud.create_user(session, username, hashed)
+    
     token = create_token(username)
-    logger.info(f"✅ Вход: {username}")
+    logger.info(f"✅ Регистрация: {username}")
     return {"token": token, "username": username}
 
 
