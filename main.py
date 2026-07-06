@@ -11,7 +11,6 @@ from jose import jwt, JWTError
 from database import init_db, get_session
 import crud
 
-# === JWT ===
 SECRET_KEY = "change-me-in-production-use-openssl-rand-hex-32"
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24
@@ -57,7 +56,6 @@ app = FastAPI(title="Мессенджер")
 static_dir = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-# Runtime-состояние
 connected_users: dict[WebSocket, str] = {}
 room_members: dict[str, set[WebSocket]] = {}
 username_to_ws: dict[str, WebSocket] = {}
@@ -73,8 +71,6 @@ def startup():
             crud.create_room(session, "general", "Общий чат", "room", "system")
             logger.info("✅ Создана комната 'Общий чат'")
 
-
-# === HTTP endpoints ===
 
 @app.post("/api/register")
 def register(data: AuthRequest):
@@ -114,8 +110,6 @@ def index():
     return (static_dir / "index.html").read_text(encoding="utf-8")
 
 
-# === WebSocket ===
-
 @app.websocket("/ws")
 def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     username = decode_token(token)
@@ -136,7 +130,6 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     logger.info(f"🔌 Подключён: {username}")
 
     try:
-        # Отправляем список комнат и пользователей
         with get_session() as session:
             rooms = crud.get_all_rooms(session)
             users = crud.get_all_users(session)
@@ -163,7 +156,6 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
             msg_type = data.get("type")
             logger.info(f"📨 [{username}] {msg_type}")
 
-            # === Комнаты ===
             if msg_type == "join_room":
                 room_id = data.get("room_id")
                 current_private_with = None
@@ -253,7 +245,6 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                         except:
                             room_members[current_room_id].discard(member)
 
-            # === Личные сообщения ===
             elif msg_type == "open_private":
                 target = data.get("username")
                 if not target or target == username:
