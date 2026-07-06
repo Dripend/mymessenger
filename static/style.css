@@ -755,3 +755,258 @@ body {
   .sidebar-tab { padding: 12px 8px; font-size: 18px; }
   #emoji-picker { left: 100px; }
 }
+
+/* === Мобильная кнопка меню === */
+#mobile-menu-btn {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent-gradient);
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+/* === Мобильная адаптация === */
+@media (max-width: 768px) {
+  #chat-screen {
+    flex-direction: column;
+    position: relative;
+  }
+
+  #sidebar {
+    width: 100%;
+    height: 100vh;
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+
+  #sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  #chat-area {
+    width: 100%;
+    height: 100vh;
+  }
+
+  #mobile-menu-btn {
+    display: block;
+  }
+
+  #chat-header {
+    padding: 14px 16px;
+  }
+
+  #room-name {
+    font-size: 16px;
+  }
+
+  #room-type {
+    font-size: 12px;
+    padding: 3px 10px;
+  }
+
+  #messages {
+    padding: 16px;
+    gap: 10px;
+  }
+
+  .msg {
+    max-width: 85%;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .msg .user {
+    font-size: 11px;
+  }
+
+  .msg .time {
+    font-size: 9px;
+  }
+
+  #chat-footer {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  #emoji-btn,
+  #send-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  #message-input {
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  /* Sidebar на мобильных */
+  #sidebar > header {
+    padding: 16px;
+  }
+
+  #sidebar > header h2 {
+    font-size: 18px;
+  }
+
+  .sidebar-tab {
+    padding: 12px 8px;
+    font-size: 13px;
+  }
+
+  .room-item,
+  .user-item {
+    padding: 12px 16px;
+  }
+
+  .room-icon,
+  .user-avatar {
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+  }
+
+  .room-name,
+  .user-name {
+    font-size: 14px;
+  }
+
+  .room-type-badge,
+  .user-status {
+    font-size: 11px;
+  }
+
+  /* Emoji picker на мобильных */
+  #emoji-picker {
+    left: 10px;
+    right: 10px;
+    width: auto;
+    bottom: 75px;
+  }
+
+  #emoji-grid {
+    grid-template-columns: repeat(7, 1fr);
+    max-height: 200px;
+  }
+
+  .emoji-item {
+    font-size: 20px;
+    padding: 5px;
+  }
+
+  .emoji-cat {
+    font-size: 16px;
+    padding: 6px;
+  }
+
+  /* Модальные окна на мобильных */
+  .modal-content {
+    width: 95%;
+    padding: 24px;
+  }
+
+  .modal-content h3 {
+    font-size: 18px;
+  }
+
+  .modal-content input[type="text"] {
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+
+  .radio-group label {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .modal-buttons button {
+    padding: 10px;
+    font-size: 14px;
+  }
+
+  /* Экран авторизации */
+  #auth-screen {
+    padding: 32px 24px;
+    width: 95%;
+  }
+
+  #auth-screen h1 {
+    font-size: 26px;
+  }
+
+  .auth-form input {
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+
+  .auth-form button {
+    padding: 12px;
+    font-size: 14px;
+  }
+}
+
+/* Очень маленькие экраны (iPhone SE и т.д.) */
+@media (max-width: 375px) {
+  .msg {
+    max-width: 90%;
+    font-size: 13px;
+  }
+
+  #emoji-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+
+  .emoji-item {
+    font-size: 18px;
+  }
+}
+
+/* Ландшафтная ориентация на мобильных */
+@media (max-height: 500px) and (orientation: landscape) {
+  #messages {
+    padding: 12px;
+  }
+
+  .msg {
+    padding: 8px 10px;
+  }
+
+  #chat-footer {
+    padding: 8px;
+  }
+
+  #emoji-picker {
+    max-height: 150px;
+  }
+
+  #emoji-grid {
+    max-height: 120px;
+  }
+}
+
+/* Тач-оптимизация */
+@media (hover: none) and (pointer: coarse) {
+  .room-item,
+  .user-item,
+  button {
+    min-height: 44px; /* Apple рекомендует минимум 44px для тач-целей */
+  }
+
+  .emoji-item {
+    min-width: 44px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
