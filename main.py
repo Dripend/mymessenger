@@ -111,18 +111,18 @@ def index():
 
 
 @app.websocket("/ws")
-def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
+async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     username = decode_token(token)
     if not username:
-        ws.close(code=4001)
+        await ws.close(code=4001)
         return
     
     with get_session() as session:
         if not crud.get_user(session, username):
-            ws.close(code=4001)
+            await ws.close(code=4001)
             return
     
-    ws.accept()
+    await ws.accept()
     connected_users[ws] = username
     username_to_ws[username] = ws
     current_room_id: str | None = None
@@ -130,18 +130,15 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     logger.info(f"🔌 Подключён: {username}")
 
     try:
+        # 🔥 ИСПРАВЛЕНИЕ: извлекаем данные ВНУТРИ сессии
         with get_session() as session:
             rooms = crud.get_all_rooms(session)
             users = crud.get_all_users(session)
             conversations = crud.get_conversations(session, username)
-        
-        ws.send_json({
-            "type": "room_list",
-            "data": [{"id": r.id, "name": r.name, "type": r.type} for r in rooms]
-        })
-        ws.send_json({
-            "type": "user_list",
-            "data": [
+            
+            # Преобразуем в словари ДО закрытия сессии
+            rooms_data = [{"id": r.id, "name": r.name, "type": r.type} for r in rooms]
+            users_data = [
                 {
                     "username": u.username,
                     "is_online": u.username in username_to_ws,
@@ -149,10 +146,12 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 }
                 for u in users if u.username != username
             ]
-        })
+        
+        await ws.send_json({"type": "room_list", "data": rooms_data})
+        await ws.send_json({"type": "user_list", "data": users_data})
 
         while True:
-            data = ws.receive_json()
+            data = await ws.receive_json()
             msg_type = data.get("type")
             logger.info(f"📨 [{username}] {msg_type}")
 
@@ -175,15 +174,17 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                             {"user": m.username, "text": m.text, "time": m.created_at.strftime("%H:%M")}
                             for m in history
                         ]
-                        ws.send_json({
-                            "type": "room_joined",
-                            "data": {
-                                "id": room.id, "name": room.name,
-                                "room_type": room.type,
-                                "is_owner": room.owner_username == username,
-                                "history": history_data
-                            }
-                        })
+                        
+                        # 🔥 Извлекаем данные ВНУТРИ сессии
+                        room_data = {
+                            "id": room.id,
+                            "name": room.name,
+                            "room_type": room.type,
+                            "is_owner": room.owner_username == username,
+                            "history": history_data
+                        }
+                        
+                        await ws.send_json({"type": "room_joined", "data": room_data})
 
             elif msg_type == "create_room":
                 room_name = data.get("name", "").strip()[:50]
@@ -199,7 +200,7 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 
                 for conn in list(connected_users.keys()):
                     try:
-                        conn.send_json({
+                        await conn.send_json({
                             "type": "room_created",
                             "data": {"id": room_id, "name": room_name, "type": room_type}
                         })
@@ -213,7 +214,8 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 if room_id not in room_members:
                     room_members[room_id] = set()
                 room_members[room_id].add(ws)
-                ws.send_json({
+                
+                await ws.send_json({
                     "type": "room_joined",
                     "data": {"id": room_id, "name": room_name, "room_type": room_type, "is_owner": True, "history": []}
                 })
@@ -226,7 +228,7 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                     if not room:
                         continue
                     if room.type == "channel" and room.owner_username != username:
-                        ws.send_json({"type": "error", "text": "Только владелец канала может писать"})
+                        await ws.send_json({"type": "error", "text": "Только владелец канала может писать"})
                         continue
                     text = data.get("text", "").strip()[:500]
                     if not text:
@@ -241,7 +243,7 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 if current_room_id in room_members:
                     for member in room_members[current_room_id].copy():
                         try:
-                            member.send_json(msg)
+                            await member.send_json(msg)
                         except:
                             room_members[current_room_id].discard(member)
 
@@ -258,7 +260,7 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 with get_session() as session:
                     target_user = crud.get_user(session, target)
                     if not target_user:
-                        ws.send_json({"type": "error", "text": "Пользователь не найден"})
+                        await ws.send_json({"type": "error", "text": "Пользователь не найден"})
                         continue
                     
                     history = crud.get_private_history(session, username, target)
@@ -271,7 +273,8 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                         }
                         for m in history
                     ]
-                    ws.send_json({
+                    
+                    await ws.send_json({
                         "type": "private_opened",
                         "data": {
                             "username": target,
@@ -289,7 +292,7 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 with get_session() as session:
                     target_user = crud.get_user(session, target)
                     if not target_user:
-                        ws.send_json({"type": "error", "text": "Получатель не найден"})
+                        await ws.send_json({"type": "error", "text": "Получатель не найден"})
                         continue
                     crud.save_private_message(session, username, target, text)
                 
@@ -300,10 +303,10 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                     "text": text,
                     "time": datetime.now().strftime("%H:%M")
                 }
-                ws.send_json(msg)
+                await ws.send_json(msg)
                 if target in username_to_ws:
                     try:
-                        username_to_ws[target].send_json(msg)
+                        await username_to_ws[target].send_json(msg)
                     except:
                         pass
 
@@ -312,7 +315,7 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                     for member in room_members[current_room_id].copy():
                         if member != ws:
                             try:
-                                member.send_json({
+                                await member.send_json({
                                     "type": "typing", "user": username,
                                     "room_id": current_room_id
                                 })
@@ -328,7 +331,7 @@ def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
         
         for conn in list(connected_users.keys()):
             try:
-                conn.send_json({
+                await conn.send_json({
                     "type": "user_offline",
                     "data": {"username": username}
                 })
