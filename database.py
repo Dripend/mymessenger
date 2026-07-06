@@ -1,12 +1,12 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.sql import func
+from contextlib import contextmanager
 
-DATABASE_URL = "sqlite+aiosqlite:///./messenger.db"
+DATABASE_URL = "sqlite:///./messenger.db"
 
-engine = create_async_engine(DATABASE_URL, echo=False)
-async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+engine = create_engine(DATABASE_URL, echo=False, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
 
@@ -37,7 +37,6 @@ class Message(Base):
     created_at = Column(DateTime, default=func.now())
 
 
-# 🔥 НОВАЯ МОДЕЛЬ: Личные сообщения
 class PrivateMessage(Base):
     __tablename__ = "private_messages"
     id = Column(Integer, primary_key=True, index=True)
@@ -47,11 +46,18 @@ class PrivateMessage(Base):
     created_at = Column(DateTime, default=func.now())
 
 
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+def init_db():
+    Base.metadata.create_all(bind=engine)
 
 
-async def get_session() -> AsyncSession:
-    async with async_session() as session:
+@contextmanager
+def get_session():
+    session = SessionLocal()
+    try:
         yield session
+        session.commit()
+    except:
+        session.rollback()
+        raise
+    finally:
+        session.close()
