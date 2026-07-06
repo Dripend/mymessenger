@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse
 from pathlib import Path
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
 import logging
 import bcrypt
 from jose import jwt, JWTError
