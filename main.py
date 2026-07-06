@@ -121,7 +121,6 @@ def index():
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     # 🔥 Сначала принимаем соединение
-    await ws.accept()
     
     # Затем проверяем токен
     username = decode_token(token)
