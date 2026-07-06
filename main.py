@@ -53,11 +53,33 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Мессенджер")
 
-from fastapi.middleware.cors import CORSMiddleware
+class FixWebSocketOrigin:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "websocket":
+            headers = list(scope.get("headers", []))
+            host = None
+            for name, value in headers:
+                if name == b"host":
+                    host = value
+                    break
+            if host:
+                new_headers = []
+                for name, value in headers:
+                    if name == b"origin":
+                        new_headers.append((b"origin", b"https://" + host))
+                    else:
+                        new_headers.append((name, value))
+                scope = {**scope, "headers": new_headers}
+        await self.app(scope, receive, send)
+
+app.add_middleware(FixWebSocketOrigin)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Разрешить все источники (для разработки)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
