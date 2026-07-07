@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.concurrency import run_in_threadpool
 from pathlib import Path
 from datetime import datetime, timedelta
 from pydantic import BaseModel
@@ -121,9 +122,22 @@ def index():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
-    print(f"🔌 WebSocket подключение от {ws.client}")  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
+    # 🔥 СНАЧАЛА принимаем соединение — обязательно!
+    await ws.accept()
+    
+    # Проверяем токен
     username = decode_token(token)
     if not username:
+        await ws.close(code=4001)
+        return
+    
+    # 🔥 Проверяем пользователя в отдельном потоке (не блокируем event loop)
+    def check_user():
+        with get_session() as session:
+            return crud.get_user(session, username)
+    
+    user = await run_in_threadpool(check_user)
+    if not user:
         await ws.close(code=4001)
         return
     
@@ -134,21 +148,25 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     logger.info(f"🔌 Подключён: {username}")
 
     try:
-        # Извлекаем данные ВНУТРИ сессии
-        with get_session() as session:
-            rooms = crud.get_all_rooms(session)
-            users = crud.get_all_users(session)
-            conversations = crud.get_conversations(session, username)
-            
-            rooms_data = [{"id": r.id, "name": r.name, "type": r.type} for r in rooms]
-            users_data = [
-                {
-                    "username": u.username,
-                    "is_online": u.username in username_to_ws,
-                    "has_conversation": any(c["username"] == u.username for c in conversations)
-                }
-                for u in users if u.username != username
-            ]
+        # 🔥 Загружаем данные в отдельном потоке
+        def load_initial_data():
+            with get_session() as session:
+                rooms = crud.get_all_rooms(session)
+                users = crud.get_all_users(session)
+                conversations = crud.get_conversations(session, username)
+                
+                rooms_data = [{"id": r.id, "name": r.name, "type": r.type} for r in rooms]
+                users_data = [
+                    {
+                        "username": u.username,
+                        "is_online": u.username in username_to_ws,
+                        "has_conversation": any(c["username"] == u.username for c in conversations)
+                    }
+                    for u in users if u.username != username
+                ]
+                return rooms_data, users_data
+        
+        rooms_data, users_data = await run_in_threadpool(load_initial_data)
         
         await ws.send_json({"type": "room_list", "data": rooms_data})
         await ws.send_json({"type": "user_list", "data": users_data})
@@ -162,31 +180,32 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 room_id = data.get("room_id")
                 current_private_with = None
                 
-                with get_session() as session:
-                    room = crud.get_room(session, room_id)
-                    if room:
-                        if current_room_id and current_room_id in room_members:
-                            room_members[current_room_id].discard(ws)
-                        current_room_id = room_id
-                        if room_id not in room_members:
-                            room_members[room_id] = set()
-                        room_members[room_id].add(ws)
-                        
+                def load_room():
+                    with get_session() as session:
+                        room = crud.get_room(session, room_id)
+                        if not room:
+                            return None
                         history = crud.get_room_history(session, room_id)
-                        history_data = [
-                            {"user": m.username, "text": m.text, "time": m.created_at.strftime("%H:%M")}
-                            for m in history
-                        ]
-                        
-                        room_data = {
+                        return {
                             "id": room.id,
                             "name": room.name,
                             "room_type": room.type,
                             "is_owner": room.owner_username == username,
-                            "history": history_data
+                            "history": [
+                                {"user": m.username, "text": m.text, "time": m.created_at.strftime("%H:%M")}
+                                for m in history
+                            ]
                         }
-                        
-                        await ws.send_json({"type": "room_joined", "data": room_data})
+                
+                room_data = await run_in_threadpool(load_room)
+                if room_data:
+                    if current_room_id and current_room_id in room_members:
+                        room_members[current_room_id].discard(ws)
+                    current_room_id = room_id
+                    if room_id not in room_members:
+                        room_members[room_id] = set()
+                    room_members[room_id].add(ws)
+                    await ws.send_json({"type": "room_joined", "data": room_data})
 
             elif msg_type == "create_room":
                 room_name = data.get("name", "").strip()[:50]
@@ -197,8 +216,11 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                     continue
                 room_id = f"room_{int(datetime.now().timestamp())}"
                 
-                with get_session() as session:
-                    crud.create_room(session, room_id, room_name, room_type, username)
+                def create_new_room():
+                    with get_session() as session:
+                        crud.create_room(session, room_id, room_name, room_type, username)
+                
+                await run_in_threadpool(create_new_room)
                 
                 for conn in list(connected_users.keys()):
                     try:
@@ -225,17 +247,26 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
             elif msg_type == "message":
                 if not current_room_id:
                     continue
-                with get_session() as session:
-                    room = crud.get_room(session, current_room_id)
-                    if not room:
-                        continue
-                    if room.type == "channel" and room.owner_username != username:
-                        await ws.send_json({"type": "error", "text": "Только владелец канала может писать"})
-                        continue
-                    text = data.get("text", "").strip()[:500]
-                    if not text:
-                        continue
-                    crud.save_message(session, current_room_id, username, text)
+                
+                def process_message():
+                    with get_session() as session:
+                        room = crud.get_room(session, current_room_id)
+                        if not room:
+                            return None, None
+                        if room.type == "channel" and room.owner_username != username:
+                            return "channel_error", None
+                        text = data.get("text", "").strip()[:500]
+                        if not text:
+                            return None, None
+                        crud.save_message(session, current_room_id, username, text)
+                        return "ok", text
+                
+                result, text = await run_in_threadpool(process_message)
+                if result == "channel_error":
+                    await ws.send_json({"type": "error", "text": "Только владелец канала может писать"})
+                    continue
+                if result != "ok":
+                    continue
                 
                 msg = {
                     "type": "message", "user": username, "text": text,
@@ -259,31 +290,31 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 current_room_id = None
                 current_private_with = target
                 
-                with get_session() as session:
-                    target_user = crud.get_user(session, target)
-                    if not target_user:
-                        await ws.send_json({"type": "error", "text": "Пользователь не найден"})
-                        continue
-                    
-                    history = crud.get_private_history(session, username, target)
-                    history_data = [
-                        {
-                            "from": m.from_user,
-                            "to": m.to_user,
-                            "text": m.text,
-                            "time": m.created_at.strftime("%H:%M")
-                        }
-                        for m in history
-                    ]
-                    
-                    await ws.send_json({
-                        "type": "private_opened",
-                        "data": {
+                def load_private():
+                    with get_session() as session:
+                        target_user = crud.get_user(session, target)
+                        if not target_user:
+                            return None
+                        history = crud.get_private_history(session, username, target)
+                        return {
                             "username": target,
                             "is_online": target in username_to_ws,
-                            "history": history_data
+                            "history": [
+                                {
+                                    "from": m.from_user,
+                                    "to": m.to_user,
+                                    "text": m.text,
+                                    "time": m.created_at.strftime("%H:%M")
+                                }
+                                for m in history
+                            ]
                         }
-                    })
+                
+                private_data = await run_in_threadpool(load_private)
+                if not private_data:
+                    await ws.send_json({"type": "error", "text": "Пользователь не найден"})
+                    continue
+                await ws.send_json({"type": "private_opened", "data": private_data})
 
             elif msg_type == "private_message":
                 target = data.get("to")
@@ -291,12 +322,18 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 if not target or not text or target == username:
                     continue
                 
-                with get_session() as session:
-                    target_user = crud.get_user(session, target)
-                    if not target_user:
-                        await ws.send_json({"type": "error", "text": "Получатель не найден"})
-                        continue
-                    crud.save_private_message(session, username, target, text)
+                def send_private():
+                    with get_session() as session:
+                        target_user = crud.get_user(session, target)
+                        if not target_user:
+                            return False
+                        crud.save_private_message(session, username, target, text)
+                        return True
+                
+                success = await run_in_threadpool(send_private)
+                if not success:
+                    await ws.send_json({"type": "error", "text": "Получатель не найден"})
+                    continue
                 
                 msg = {
                     "type": "private_message",
