@@ -1,11 +1,11 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from pathlib import Path
 from datetime import datetime, timedelta
 from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
 import logging
 import bcrypt
 from jose import jwt, JWTError
@@ -13,7 +13,7 @@ from jose import jwt, JWTError
 from database import init_db, get_session
 import crud
 
-SECRET_KEY = "change-me-in-production-use-openssl-rand-hex-32"
+SECRET_KEY = "change-me-in-production"
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24
 
@@ -122,16 +122,15 @@ def index():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
-    # 🔥 СНАЧАЛА принимаем соединение — обязательно!
+    # 🔥 СНАЧАЛА принимаем соединение
     await ws.accept()
     
-    # Проверяем токен
     username = decode_token(token)
     if not username:
         await ws.close(code=4001)
         return
     
-    # 🔥 Проверяем пользователя в отдельном потоке (не блокируем event loop)
+    # 🔥 Все БД-операции через run_in_threadpool
     def check_user():
         with get_session() as session:
             return crud.get_user(session, username)
@@ -148,8 +147,8 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     logger.info(f"🔌 Подключён: {username}")
 
     try:
-        # 🔥 Загружаем данные в отдельном потоке
-        def load_initial_data():
+        # Загружаем начальные данные
+        def load_initial():
             with get_session() as session:
                 rooms = crud.get_all_rooms(session)
                 users = crud.get_all_users(session)
@@ -160,13 +159,12 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                     {
                         "username": u.username,
                         "is_online": u.username in username_to_ws,
-                        "has_conversation": any(c["username"] == u.username for c in conversations)
                     }
                     for u in users if u.username != username
                 ]
                 return rooms_data, users_data
         
-        rooms_data, users_data = await run_in_threadpool(load_initial_data)
+        rooms_data, users_data = await run_in_threadpool(load_initial)
         
         await ws.send_json({"type": "room_list", "data": rooms_data})
         await ws.send_json({"type": "user_list", "data": users_data})
@@ -216,11 +214,11 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                     continue
                 room_id = f"room_{int(datetime.now().timestamp())}"
                 
-                def create_new_room():
+                def create_room_db():
                     with get_session() as session:
                         crud.create_room(session, room_id, room_name, room_type, username)
                 
-                await run_in_threadpool(create_new_room)
+                await run_in_threadpool(create_room_db)
                 
                 for conn in list(connected_users.keys()):
                     try:
@@ -248,28 +246,28 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 if not current_room_id:
                     continue
                 
-                def process_message():
+                def save_msg():
                     with get_session() as session:
                         room = crud.get_room(session, current_room_id)
                         if not room:
                             return None, None
                         if room.type == "channel" and room.owner_username != username:
-                            return "channel_error", None
+                            return "error", "Только владелец канала может писать"
                         text = data.get("text", "").strip()[:500]
                         if not text:
                             return None, None
                         crud.save_message(session, current_room_id, username, text)
                         return "ok", text
                 
-                result, text = await run_in_threadpool(process_message)
-                if result == "channel_error":
-                    await ws.send_json({"type": "error", "text": "Только владелец канала может писать"})
+                status, result = await run_in_threadpool(save_msg)
+                if status == "error":
+                    await ws.send_json({"type": "error", "text": result})
                     continue
-                if result != "ok":
+                if status != "ok":
                     continue
                 
                 msg = {
-                    "type": "message", "user": username, "text": text,
+                    "type": "message", "user": username, "text": result,
                     "time": datetime.now().strftime("%H:%M"),
                     "room_id": current_room_id
                 }
