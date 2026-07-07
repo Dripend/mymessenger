@@ -121,6 +121,7 @@ def index():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
+    print(f"🔌 WebSocket подключение от {ws.client}")  # ← ДОБАВЬТЕ ЭТУ СТРОКУ
     username = decode_token(token)
     if not username:
         await ws.close(code=4001)
