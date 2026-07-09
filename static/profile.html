@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Профиль - MyMessenger</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/profile.css">
+</head>
+<body>
+  <div class="profile-container">
+    <div class="profile-header">
+      <button onclick="window.location.href='/'" class="back-btn">← Назад к чату</button>
+      <h1>👤 Профиль пользователя</h1>
+    </div>
+
+    <div class="profile-content">
+      <!-- Информация о пользователе с аватаром -->
+      <div class="profile-section">
+        <h2>ℹ️ Информация</h2>
+
+        <!-- Аватар -->
+        <div class="avatar-section">
+          <div class="avatar-container">
+            <img id="profile-avatar" src="" alt="Аватар" class="profile-avatar">
+            <div class="avatar-overlay">
+              <label for="avatar-input" class="avatar-upload-btn"> Изменить</label>
+              <input type="file" id="avatar-input" accept="image/*" style="display: none;">
+            </div>
+          </div>
+          <div class="avatar-actions">
+            <button onclick="removeAvatar()" class="btn-secondary" id="remove-avatar-btn" style="display: none;">
+              ️ Удалить аватар
+            </button>
+          </div>
+        </div>
+
+        <div class="profile-info">
+          <div class="info-row">
+            <span class="info-label">Имя пользователя:</span>
+            <span class="info-value" id="profile-username">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Роль:</span>
+            <span class="info-value" id="profile-role">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Зарегистрирован:</span>
+            <span class="info-value" id="profile-created">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Статус:</span>
+            <span class="info-value online">🟢 В сети</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Смена пароля -->
+      <div class="profile-section">
+        <h2>🔐 Смена пароля</h2>
+        <form id="change-password-form" class="profile-form">
+          <div class="form-group">
+            <label for="current-password">Текущий пароль:</label>
+            <input type="password" id="current-password" required minlength="4">
+          </div>
+          <div class="form-group">
+            <label for="new-password">Новый пароль:</label>
+            <input type="password" id="new-password" required minlength="4">
+          </div>
+          <div class="form-group">
+            <label for="confirm-password">Подтвердите пароль:</label>
+            <input type="password" id="confirm-password" required minlength="4">
+          </div>
+          <button type="submit" class="btn-primary"> Сохранить новый пароль</button>
+          <div id="password-message" class="message"></div>
+        </form>
+      </div>
+
+      <!-- Статистика -->
+      <div class="profile-section">
+        <h2>📊 Моя статистика</h2>
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon">💬</div>
+            <div class="stat-value" id="stat-messages">0</div>
+            <div class="stat-label">Сообщений отправлено</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">👥</div>
+            <div class="stat-value" id="stat-rooms">0</div>
+            <div class="stat-label">Комнат создано</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">⏱️</div>
+            <div class="stat-value" id="stat-online">0ч</div>
+            <div class="stat-label">Время онлайн</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Опасная зона -->
+      <div class="profile-section danger-zone">
+        <h2>⚠️ Опасная зона</h2>
+        <p class="danger-text">Эти действия нельзя отменить. Будьте осторожны!</p>
+        <button onclick="deleteAccount()" class="btn-danger">🗑️ Удалить мой аккаунт</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/profile.js"></script>
+</body>
+</html>

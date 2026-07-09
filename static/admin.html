@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Админ-панель</title>
+  <link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+  <div id="login-screen" class="screen">
+    <div class="login-card">
+      <h1>🔐 Админ-панель</h1>
+        <form id="admin-login-form">
+          <input type="text" id="admin-username" placeholder="Ваш логин" required autocomplete="username">
+          <input type="password" id="admin-password" placeholder="Пароль администратора" required autocomplete="current-password">
+          <button type="submit">Войти</button>
+          <div id="login-error" class="error"></div>
+        </form>
+    </div>
+  </div>
+
+  <div id="admin-screen" class="screen hidden">
+    <header>
+      <h1>👑 Админ-панель</h1>
+      <button id="logout-btn" class="logout-btn">Выйти</button>
+    </header>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon">👥</div>
+        <div class="stat-value" id="users-count">0</div>
+        <div class="stat-label">Пользователей</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">💬</div>
+        <div class="stat-value" id="rooms-count">0</div>
+        <div class="stat-label">Комнат</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📨</div>
+        <div class="stat-value" id="messages-count">0</div>
+        <div class="stat-label">Сообщений</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔒</div>
+        <div class="stat-value" id="private-count">0</div>
+        <div class="stat-label">Личных сообщений</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <h2>⚙️ Действия</h2>
+      <div class="action-buttons">
+        <button onclick="clearMessages(0)" class="btn-danger">🗑️ Удалить все сообщения</button>
+        <button onclick="clearMessages(7)" class="btn-warning">🗑️ Удалить сообщения старше 7 дней</button>
+        <button onclick="clearMessages(30)" class="btn-warning">🗑️ Удалить сообщения старше 30 дней</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>👥 Пользователи</h2>
+      <div id="users-list" class="list"></div>
+    </div>
+
+    <div class="section">
+      <h2>💬 Комнаты</h2>
+      <div id="rooms-list" class="list"></div>
+    </div>
+  </div>
+
+  <script src="/static/admin.js"></script>
+</body>
+</html>
