@@ -31,9 +31,9 @@ const emojiGrid = document.getElementById('emoji-grid');
 let myName = '';
 let ws;
 let currentRoomId = null;
-let currentPrivateWith = null;  // 🔥 с кем открыт ЛС-чат
+let currentPrivateWith = null;
 let reconnectTimer = null;
-let chatMode = 'none';  // 'room' | 'private' | 'none'
+let chatMode = 'none';
 
 // === Эмодзи ===
 const emojiData = {
@@ -123,7 +123,7 @@ function logout() {
 }
 logoutBtn.onclick = logout;
 
-// 🔥 === Вкладки sidebar ===
+// === Вкладки sidebar ===
 document.querySelectorAll('.sidebar-tab').forEach(tab => {
   tab.onclick = () => {
     document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
@@ -174,12 +174,11 @@ function handleEvent(data) {
       emojiBtn.disabled = !canWrite;
       messageInput.placeholder = canWrite ? 'Напишите сообщение...' : '🔒 Только чтение';
       messagesEl.innerHTML = '';
-      data.data.history.forEach(m => addMessage({ user: m.user, text: m.text, time: m.time }));
+      data.data.history.forEach(m => addMessage({ user: m.user, text: m.text, time: m.time, id: m.id }));
       highlightActive('.room-item', currentRoomId);
       highlightActive('.user-item', null);
       break;
 
-    // 🔥 Открыт ЛС-чат
     case 'private_opened':
       currentPrivateWith = data.data.username;
       currentRoomId = null;
@@ -197,6 +196,7 @@ function handleEvent(data) {
           user: m.from,
           text: m.text,
           time: m.time,
+          id: m.id,
           incoming: !isMine
         });
       });
@@ -204,21 +204,19 @@ function handleEvent(data) {
       highlightActive('.user-item', currentPrivateWith);
       break;
 
-    // 🔥 Входящее/исходящее ЛС
     case 'private_message':
-      const isMine = data.from === myName;
-      // Показываем только если открыт чат с этим пользователем
+      const isMinePM = data.from === myName;
       if (currentPrivateWith === data.from || currentPrivateWith === data.to) {
         addPrivateMessage({
           user: data.from,
           text: data.text,
           time: data.time,
-          incoming: !isMine
+          id: data.id,
+          incoming: !isMinePM
         });
       } else {
-        // Уведомление о новом ЛС
-        const other = isMine ? data.to : data.from;
-        if (!isMine) {
+        const other = isMinePM ? data.to : data.from;
+        if (!isMinePM) {
           showNotification(`💬 Новое сообщение от @${other}`);
         }
       }
@@ -226,7 +224,7 @@ function handleEvent(data) {
 
     case 'message':
       if (chatMode === 'room' && data.room_id === currentRoomId) {
-        addMessage({ user: data.user, text: data.text, time: data.time });
+        addMessage({ user: data.user, text: data.text, time: data.time, id: data.id });
       }
       break;
 
@@ -236,6 +234,10 @@ function handleEvent(data) {
         clearTimeout(typingEl._t);
         typingEl._t = setTimeout(() => typingEl.textContent = '', 2000);
       }
+      break;
+
+    case 'message_deleted':
+      handleMessageDeleted(data);
       break;
 
     case 'error':
@@ -262,18 +264,20 @@ function addRoomToList(room) {
       <div class="room-type-badge">${room.type === 'channel' ? 'Канал' : 'Комната'}</div>
     </div>
   `;
-  div.onclick = () => ws.send(JSON.stringify({ type: 'join_room', room_id: room.id }));
+  div.onclick = () => {
+    ws.send(JSON.stringify({ type: 'join_room', room_id: room.id }));
+    closeMobileMenu();
+  };
   roomList.appendChild(div);
 }
 
-// 🔥 === Пользователи ===
+// === Пользователи ===
 function renderUserList(users) {
   userList.innerHTML = '';
-  // Сначала онлайн, потом оффлайн
   users.sort((a, b) => (b.is_online ? 1 : 0) - (a.is_online ? 1 : 0));
   users.forEach(addUserToList);
 }
-// 🔥 Генератор градиента по имени (детерминированный)
+
 function getAvatarGradient(name) {
   const gradients = [
     'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -287,7 +291,6 @@ function getAvatarGradient(name) {
     'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
     'linear-gradient(135deg, #ff6e7f 0%, #bfe9ff 100%)',
   ];
-  // Хэш от имени
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
@@ -317,6 +320,7 @@ function addUserToList(user) {
   `;
   div.onclick = () => {
     ws.send(JSON.stringify({ type: 'open_private', username: user.username }));
+    closeMobileMenu();
   };
   userList.appendChild(div);
 }
@@ -329,7 +333,6 @@ function updateUserOnlineStatus(username, isOnline) {
     dot.className = `status-dot ${isOnline ? 'online' : 'offline'}`;
     status.textContent = isOnline ? 'В сети' : 'Не в сети';
   }
-  // Если открыт чат с этим пользователем — обновим статус
   if (currentPrivateWith === username) {
     roomTypeEl.textContent = isOnline ? '🟢 В сети' : '⚫ Не в сети';
   }
@@ -343,26 +346,43 @@ function highlightActive(selector, value) {
 }
 
 // === Сообщения ===
-function addMessage({ user, text, time }) {
+function addMessage({ user, text, time, id }) {
   const div = document.createElement('div');
   div.className = 'msg' + (user === myName ? ' own' : '');
+  if (id !== undefined && id !== null) {
+    div.dataset.messageId = id;
+  }
+  
+  const deleteBtn = (user === myName && id !== undefined && id !== null)
+    ? `<button class="delete-btn" title="Удалить" onclick="deleteMessage(${id})">🗑️</button>` 
+    : '';
+  
   div.innerHTML = `
     ${user !== myName ? `<div class="user">${escapeHtml(user)}</div>` : ''}
     <div>${escapeHtml(text)}</div>
     <div class="time">${time}</div>
+    ${deleteBtn}
   `;
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-// 🔥 Личные сообщения
-function addPrivateMessage({ user, text, time, incoming }) {
+function addPrivateMessage({ user, text, time, id, incoming }) {
   const div = document.createElement('div');
   div.className = `msg private ${incoming ? 'incoming' : 'outgoing'}`;
+  if (id !== undefined && id !== null) {
+    div.dataset.messageId = id;
+  }
+  
+  const deleteBtn = (!incoming && id !== undefined && id !== null) 
+    ? `<button class="delete-btn" title="Удалить" onclick="deleteMessage(${id})">🗑️</button>` 
+    : '';
+  
   div.innerHTML = `
     ${incoming ? `<div class="user">${escapeHtml(user)}</div>` : ''}
     <div>${escapeHtml(text)}</div>
     <div class="time">${time}</div>
+    ${deleteBtn}
   `;
   messagesEl.appendChild(div);
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -374,7 +394,7 @@ function escapeHtml(str) {
   return d.innerHTML;
 }
 
-// 🔥 Отправка сообщения — учитываем режим
+// === Отправка сообщения ===
 function sendMessage() {
   const text = messageInput.value.trim();
   if (!text || messageInput.disabled) return;
@@ -447,9 +467,42 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// 🔥 Простое уведомление
+// === Удаление сообщений ===
+async function deleteMessage(id) {
+  if (id === undefined || id === null || id === 'undefined') {
+    alert('❌ Не удалось определить ID сообщения');
+    return;
+  }
+  
+  if (!confirm('Удалить это сообщение?')) return;
+  
+  const token = sessionStorage.getItem('token');
+  try {
+    const res = await fetch(`/api/messages/${id}?token=${encodeURIComponent(token)}`, {
+      method: 'DELETE'
+    });
+    
+    if (!res.ok) {
+      const data = await res.json();
+      alert('❌ ' + (data.detail || 'Не удалось удалить'));
+      return;
+    }
+  } catch (err) {
+    alert('Ошибка соединения');
+  }
+}
+
+function handleMessageDeleted(data) {
+  const msgEl = document.querySelector(`[data-message-id="${data.id}"]`);
+  if (msgEl) {
+    msgEl.style.transition = 'all 0.3s ease';
+    msgEl.style.opacity = '0';
+    msgEl.style.transform = 'translateX(20px)';
+    setTimeout(() => msgEl.remove(), 300);
+  }
+}
+
 function showNotification(text) {
-  // Можно заменить на toast-уведомление
   console.log('🔔', text);
 }
 
@@ -463,64 +516,12 @@ mobileMenuBtn.onclick = () => {
   sidebar.classList.toggle('mobile-open');
 };
 
-// Закрывать sidebar при выборе комнаты/пользователя на мобильных
 function closeMobileMenu() {
   if (window.innerWidth <= 768) {
     sidebar.classList.remove('mobile-open');
   }
 }
 
-// Переопределяем клики по комнатам и пользователям
-const originalAddRoomToList = addRoomToList;
-addRoomToList = function(room) {
-  if (document.querySelector(`.room-item[data-room-id="${room.id}"]`)) return;
-  const div = document.createElement('div');
-  div.className = 'room-item';
-  div.dataset.roomId = room.id;
-  const icon = room.type === 'channel' ? '📢' : '💬';
-  div.innerHTML = `
-    <div class="room-icon">${icon}</div>
-    <div class="room-info">
-      <div class="room-name">${escapeHtml(room.name)}</div>
-      <div class="room-type-badge">${room.type === 'channel' ? 'Канал' : 'Комната'}</div>
-    </div>
-  `;
-  div.onclick = () => {
-    ws.send(JSON.stringify({ type: 'join_room', room_id: room.id }));
-    closeMobileMenu(); // 🔥 Закрываем меню на мобильных
-  };
-  roomList.appendChild(div);
-};
-
-const originalAddUserToList = addUserToList;
-addUserToList = function(user) {
-  if (user.username === myName) return;
-  if (document.querySelector(`.user-item[data-username="${user.username}"]`)) return;
-  
-  const div = document.createElement('div');
-  div.className = 'user-item';
-  div.dataset.username = user.username;
-  const initial = user.username.charAt(0).toUpperCase();
-  const gradient = getAvatarGradient(user.username);
-  
-  div.innerHTML = `
-    <div class="user-avatar" style="background: ${gradient}">
-      ${initial}
-      <span class="status-dot ${user.is_online ? 'online' : 'offline'}"></span>
-    </div>
-    <div class="user-info">
-      <div class="user-name">@${escapeHtml(user.username)}</div>
-      <div class="user-status">${user.is_online ? '🟢 В сети' : '⚫ Не в сети'}</div>
-    </div>
-  `;
-  div.onclick = () => {
-    ws.send(JSON.stringify({ type: 'open_private', username: user.username }));
-    closeMobileMenu(); // 🔥 Закрываем меню на мобильных
-  };
-  userList.appendChild(div);
-};
-
-// Закрытие sidebar при клике вне его (на мобильных)
 document.addEventListener('click', (e) => {
   if (window.innerWidth <= 768 &&
       sidebar.classList.contains('mobile-open') &&
