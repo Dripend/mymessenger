@@ -3,7 +3,6 @@ from database import User, Room, Message, PrivateMessage
 from sqlalchemy import or_, and_
 from typing import Optional
 
-
 # === Пользователи ===
 
 def create_user(session: Session, username: str, hashed_password: str) -> User:
@@ -13,14 +12,11 @@ def create_user(session: Session, username: str, hashed_password: str) -> User:
     session.refresh(user)
     return user
 
-
 def get_user(session: Session, username: str) -> Optional[User]:
     return session.query(User).filter(User.username == username).first()
 
-
 def get_all_users(session: Session) -> list[User]:
     return session.query(User).all()
-
 
 # === Комнаты ===
 
@@ -31,14 +27,11 @@ def create_room(session: Session, room_id: str, name: str, room_type: str, owner
     session.refresh(room)
     return room
 
-
 def get_all_rooms(session: Session) -> list[Room]:
     return session.query(Room).all()
 
-
 def get_room(session: Session, room_id: str) -> Optional[Room]:
     return session.query(Room).filter(Room.id == room_id).first()
-
 
 # === Сообщения в комнатах ===
 
@@ -49,7 +42,6 @@ def save_message(session: Session, room_id: str, username: str, text: str) -> Me
     session.refresh(msg)
     return msg
 
-
 def get_room_history(session: Session, room_id: str, limit: int = 100) -> list[Message]:
     messages = session.query(Message)\
         .filter(Message.room_id == room_id)\
@@ -58,6 +50,17 @@ def get_room_history(session: Session, room_id: str, limit: int = 100) -> list[M
         .all()
     return list(reversed(messages))
 
+def delete_message(session: Session, message_id: int, username: str) -> bool:
+    """Удалить сообщение в комнате (только если это сообщение автора)."""
+    msg = session.query(Message).filter(
+        Message.id == message_id,
+        Message.username == username
+    ).first()
+    if msg:
+        session.delete(msg)
+        session.commit()
+        return True
+    return False
 
 # === Личные сообщения ===
 
@@ -67,7 +70,6 @@ def save_private_message(session: Session, from_user: str, to_user: str, text: s
     session.commit()
     session.refresh(msg)
     return msg
-
 
 def get_private_history(session: Session, user1: str, user2: str, limit: int = 100) -> list[PrivateMessage]:
     messages = session.query(PrivateMessage)\
@@ -82,6 +84,17 @@ def get_private_history(session: Session, user1: str, user2: str, limit: int = 1
         .all()
     return list(reversed(messages))
 
+def delete_private_message(session: Session, message_id: int, username: str) -> bool:
+    """Удалить личное сообщение (только отправитель может удалить)."""
+    msg = session.query(PrivateMessage).filter(
+        PrivateMessage.id == message_id,
+        PrivateMessage.from_user == username
+    ).first()
+    if msg:
+        session.delete(msg)
+        session.commit()
+        return True
+    return False
 
 def get_conversations(session: Session, username: str) -> list[dict]:
     messages = session.query(PrivateMessage)\
@@ -90,11 +103,11 @@ def get_conversations(session: Session, username: str) -> list[dict]:
         )\
         .order_by(PrivateMessage.created_at.desc())\
         .all()
-    
+
     conversations = {}
     for msg in messages:
         other = msg.to_user if msg.from_user == username else msg.from_user
         if other not in conversations:
             conversations[other] = msg.created_at
-    
+
     return [{"username": u, "last_message": t} for u, t in conversations.items()]
