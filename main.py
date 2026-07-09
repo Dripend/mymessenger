@@ -115,6 +115,21 @@ def login(data: AuthRequest):
     return {"token": token, "username": username}
 
 
+@app.delete("/api/messages/{message_id}")
+def delete_message(message_id: int, token: str = Query(...)):
+    username = decode_token(token)
+    if not username:
+        raise HTTPException(401, "Не авторизован")
+    
+    with get_session() as session:
+        if crud.delete_message(session, message_id, username):
+            return {"status": "ok", "type": "room"}
+        if crud.delete_private_message(session, message_id, username):
+            return {"status": "ok", "type": "private"}
+    
+    raise HTTPException(404, "Сообщение не найдено или вы не автор")
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return (static_dir / "index.html").read_text(encoding="utf-8")
@@ -122,7 +137,6 @@ def index():
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
-    # 🔥 СНАЧАЛА принимаем соединение
     await ws.accept()
     
     username = decode_token(token)
@@ -130,7 +144,6 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
         await ws.close(code=4001)
         return
     
-    # 🔥 Все БД-операции через run_in_threadpool
     def check_user():
         with get_session() as session:
             return crud.get_user(session, username)
@@ -147,7 +160,6 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
     logger.info(f"🔌 Подключён: {username}")
 
     try:
-        # Загружаем начальные данные
         def load_initial():
             with get_session() as session:
                 rooms = crud.get_all_rooms(session)
@@ -190,7 +202,7 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                             "room_type": room.type,
                             "is_owner": room.owner_username == username,
                             "history": [
-                                {"user": m.username, "text": m.text, "time": m.created_at.strftime("%H:%M")}
+                                {"user": m.username, "text": m.text, "time": m.created_at.strftime("%H:%M"), "id": m.id}
                                 for m in history
                             ]
                         }
@@ -250,16 +262,16 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                     with get_session() as session:
                         room = crud.get_room(session, current_room_id)
                         if not room:
-                            return None, None
+                            return None, None, None
                         if room.type == "channel" and room.owner_username != username:
-                            return "error", "Только владелец канала может писать"
+                            return "error", "Только владелец канала может писать", None
                         text = data.get("text", "").strip()[:500]
                         if not text:
-                            return None, None
-                        crud.save_message(session, current_room_id, username, text)
-                        return "ok", text
+                            return None, None, None
+                        saved_msg = crud.save_message(session, current_room_id, username, text)
+                        return "ok", text, saved_msg.id
                 
-                status, result = await run_in_threadpool(save_msg)
+                status, result, msg_id = await run_in_threadpool(save_msg)
                 if status == "error":
                     await ws.send_json({"type": "error", "text": result})
                     continue
@@ -269,7 +281,8 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                 msg = {
                     "type": "message", "user": username, "text": result,
                     "time": datetime.now().strftime("%H:%M"),
-                    "room_id": current_room_id
+                    "room_id": current_room_id,
+                    "id": msg_id
                 }
                 if current_room_id in room_members:
                     for member in room_members[current_room_id].copy():
@@ -302,7 +315,8 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                                     "from": m.from_user,
                                     "to": m.to_user,
                                     "text": m.text,
-                                    "time": m.created_at.strftime("%H:%M")
+                                    "time": m.created_at.strftime("%H:%M"),
+                                    "id": m.id
                                 }
                                 for m in history
                             ]
@@ -324,11 +338,11 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                     with get_session() as session:
                         target_user = crud.get_user(session, target)
                         if not target_user:
-                            return False
-                        crud.save_private_message(session, username, target, text)
-                        return True
+                            return False, None
+                        saved_msg = crud.save_private_message(session, username, target, text)
+                        return True, saved_msg.id
                 
-                success = await run_in_threadpool(send_private)
+                success, msg_id = await run_in_threadpool(send_private)
                 if not success:
                     await ws.send_json({"type": "error", "text": "Получатель не найден"})
                     continue
@@ -338,7 +352,8 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                     "from": username,
                     "to": target,
                     "text": text,
-                    "time": datetime.now().strftime("%H:%M")
+                    "time": datetime.now().strftime("%H:%M"),
+                    "id": msg_id
                 }
                 await ws.send_json(msg)
                 if target in username_to_ws:
@@ -346,6 +361,41 @@ async def websocket_endpoint(ws: WebSocket, token: str = Query(...)):
                         await username_to_ws[target].send_json(msg)
                     except:
                         pass
+
+            elif msg_type == "delete_message":
+                message_id = data.get("id")
+                if not message_id:
+                    continue
+                
+                def do_delete():
+                    with get_session() as session:
+                        if crud.delete_message(session, message_id, username):
+                            return "room"
+                        if crud.delete_private_message(session, message_id, username):
+                            return "private"
+                        return None
+                
+                result = await run_in_threadpool(do_delete)
+                if result:
+                    delete_event = {
+                        "type": "message_deleted",
+                        "id": message_id,
+                        "deleted_by": username
+                    }
+                    
+                    if result == "room" and current_room_id in room_members:
+                        for member in room_members[current_room_id].copy():
+                            try:
+                                await member.send_json(delete_event)
+                            except:
+                                room_members[current_room_id].discard(member)
+                    else:
+                        await ws.send_json(delete_event)
+                        if current_private_with and current_private_with in username_to_ws:
+                            try:
+                                await username_to_ws[current_private_with].send_json(delete_event)
+                            except:
+                                pass
 
             elif msg_type == "typing":
                 if current_room_id and current_room_id in room_members:
