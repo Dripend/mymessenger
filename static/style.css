@@ -1010,3 +1010,38 @@ body {
     justify-content: center;
   }
 }
+
+/* Кнопка удаления сообщения */
+.delete-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(255, 71, 87, 0.9);
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 12px;
+  opacity: 0;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.msg {
+  position: relative;
+}
+
+.msg:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  background: #ff4757;
+  transform: scale(1.2);
+}
